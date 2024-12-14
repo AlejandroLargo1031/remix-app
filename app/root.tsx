@@ -7,13 +7,17 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  Link,
+  // Link,
   useLoaderData,
-  NavLink
+  NavLink,
+  useNavigation,
+  useSubmit
 } from "@remix-run/react";
 import { getContacts, createEmptyContact } from "./data";
 
-import type { LinksFunction } from "@remix-run/node";
+import { useEffect } from "react";
+
+import type { LinksFunction, LoaderFunctionArgs } from "@remix-run/node";
 import appStylesHref from "./app.css?url";
 
 export const links: LinksFunction = () => [
@@ -23,21 +27,33 @@ export const links: LinksFunction = () => [
   },
 ];
 
-
-
 export const action = async () => {
   const contact = await createEmptyContact();
-  return redirect(`/contacts/${contact.id}/edit`)
-}
+  return redirect(`/contacts/${contact.id}/edit`);
+};
 
-export const loader = async () => {
-  const contacts = await getContacts();
-  return json({ contacts });
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q");
+  const contacts = await getContacts(q);
+  return json({ contacts, q });
 };
 
 export default function App() {
-  const { contacts } = useLoaderData<typeof loader>();
-  
+  const { contacts, q } = useLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  const sumbit = useSubmit()
+
+  const searching = navigation.location && new URLSearchParams(navigation.location.search).has("q")
+
+  useEffect(() => {
+    const searchField = document.getElementById("q");
+
+    if (searchField instanceof HTMLInputElement) {
+      searchField.value = q || ""
+    }
+  }, [q]);
+
   return (
     <html lang="en">
       <head>
@@ -50,29 +66,41 @@ export default function App() {
         <div id="sidebar">
           <h1>Remix Contacts</h1>
           <div>
-            <Form id="search-form" role="search">
+            <Form
+              onChange = {(event) => {
+                const ifFirstSearch = q === null;
+
+                sumbit(event.currentTarget, {
+                  replace: !ifFirstSearch
+                } )}}  
+              id="search-form" 
+              role="search">
               <input
+                className={searching ? "loading" : ""}              
                 id="q"
+                defaultValue={q || ""}
                 aria-label="Search contacts"
                 placeholder="Search"
                 type="search"
                 name="q"
               />
-              <div id="search-spinner" aria-hidden hidden={true} />
+              <div id="search-spinner" aria-hidden hidden={!searching} />
             </Form>
             <Form method="post">
               <button type="submit">Nuevo</button>
             </Form>
           </div>
           <nav>
-            {contacts.length ? 
+            {contacts.length ? (
               <ul>
                 {contacts.map((contact) => (
                   <li key={contact.id}>
-                    <NavLink className={ 
-                      ({isActive, isPending}) =>
+                    <NavLink
+                      className={({ isActive, isPending }) =>
                         isActive ? "active" : isPending ? "pending" : ""
-                     } to={`contacts/${contact.id}`}>
+                      }
+                      to={`contacts/${contact.id}`}
+                    >
                       {contact.first || contact.last ? (
                         <>
                           {contact.first} {contact.last}
@@ -85,14 +113,16 @@ export default function App() {
                   </li>
                 ))}
               </ul>
-             : (
+            ) : (
               <p>
                 <i>No contacts</i>
               </p>
             )}
           </nav>
         </div>
-        <div id="detail">
+        <div
+        className={ navigation.state === "loading" && !searching ? "loading" : ""}
+        id="detail">
           <Outlet />
         </div>
 
